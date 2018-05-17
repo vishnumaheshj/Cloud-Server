@@ -310,12 +310,17 @@ class SignupHandler(BaseHandler):
     def post(self):
         username = tornado.escape.xhtml_escape(self.get_argument("username"))
         password = tornado.escape.xhtml_escape(self.get_argument("password"))
-        hubid = int(tornado.escape.xhtml_escape(self.get_argument("hubid")))
+        hubid_entry = tornado.escape.xhtml_escape(self.get_argument("hubid"))
         print("username:%s" % username)
         print("password %s" % password)
-        print("HudId %d" % hubid)
+        print("HudId %s" % hubid_entry)
 
-        error = serverDB.checkHubValid(hubid)
+        try:
+            hubid = int(hubid_entry)
+            error = serverDB.checkHubValid(hubid)
+        except ValueError:
+            error = "Hub ID is not valid"
+
         if not error:
             error = serverDB.addUser(username, password)
             if not error:
