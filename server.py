@@ -47,9 +47,9 @@ class AppSocketConnection(SockJSConnection):
             else:
                 self.send(json.dumps({'type': 'error', 'reason': 'auth_fail'}))
                 return False
-            if self.user not in serverDB.appSocketList:
-                serverDB.appSocketList[self.user] = []
-            serverDB.appSocketList[self.user].append(self)
+            if self.user not in serverMethods.appSocketList:
+                serverMethods.appSocketList[self.user] = []
+            serverMethods.appSocketList[self.user].append(self)
 
             device = serverDB.findUserHub(self.user)
             nodeList = {}
@@ -113,20 +113,21 @@ class AppSocketConnection(SockJSConnection):
                 if '_id' in nodeList:
                     del nodeList['_id']
                 msg = json.dumps(nodeList, default=json_util.default)
-                if self.user in serverDB.socketList:
-                    print("sending to users:%d" % len(serverDB.socketList[self.user]))
-                    SocketConnection.broadcast(serverDB.socketList[self.user][0],
-                                               serverDB.socketList[self.user], msg)
-                if self.user in serverDB.appSocketList:
-                    print("sending to apps:%d" % len(serverDB.appSocketList[self.user]))
-                    AppSocketConnection.broadcast(serverDB.appSocketList[self.user][0],
-                                                  serverDB.appSocketList[self.user], msg)
+                hubAddr_cast = int(hubAddr)
+                if hubAddr_cast in serverMethods.socketList:
+                    print("sending to users:%d" % len(serverMethods.socketList[hubAddr_cast]))
+                    SocketConnection.broadcast(serverMethods.socketList[hubAddr_cast][0],
+                                               serverMethods.socketList[hubAddr_cast], msg)
+                if self.user in serverMethods.appSocketList:
+                    print("sending to apps:%d" % len(serverMethods.appSocketList[self.user]))
+                    AppSocketConnection.broadcast(serverMethods.appSocketList[self.user][0],
+                                                  serverMethods.appSocketList[self.user], msg)
 
     def on_close(self):
         print("App socket CLOSED")
-        if self.user in serverDB.appSocketList:
-            if self in serverDB.appSocketList[self.user]:
-                serverDB.appSocketList[self.user].remove(self)
+        if self.user in serverMethods.appSocketList:
+            if self in serverMethods.appSocketList[self.user]:
+                serverMethods.appSocketList[self.user].remove(self)
 
 class SocketConnection(SockJSConnection):
     def on_open(self, request):
@@ -150,6 +151,7 @@ class SocketConnection(SockJSConnection):
             # session ID Authentication.
             self.sessionId = msg['sessionId']
             self.user = msg['user']
+            self.hubAddr = serverDB.findUserHub(self.user)
             if self.sessionId not in serverDB.sessionList[self.user]:
                 # Force a page refresh at the client side to start a new session,
                 # As the requested session is not found.
@@ -158,20 +160,20 @@ class SocketConnection(SockJSConnection):
             else:
                 self.authenticated = True
 
-            if self.user not in serverDB.socketList:
-                serverDB.socketList[self.user] = []
-            serverDB.socketList[self.user].append(self)
+            if self.hubAddr not in serverMethods.socketList:
+                serverMethods.socketList[self.hubAddr] = []
+            serverMethods.socketList[self.hubAddr].append(self)
 
         print("socket list")
-        print(serverDB.socketList)
+        print(serverMethods.socketList)
 
     def on_close(self):
         print("socket connection closed")
-        if self.user in serverDB.socketList:
-            if self in serverDB.socketList[self.user]:
-                serverDB.socketList[self.user].remove(self)
+        if self.hubAddr in serverMethods.socketList:
+            if self in serverMethods.socketList[self.hubAddr]:
+                serverMethods.socketList[self.hubAddr].remove(self)
         print("socket list")
-        print(serverDB.socketList)
+        print(serverMethods.socketList)
 
         if self.user in serverDB.sessionList:
             if self.sessionId in serverDB.sessionList[self.user]:
@@ -260,7 +262,9 @@ class Userhandler(BaseHandler):
                     node = nodeList[boardStr]
                     Msg = serverMethods.sentStateChangeReq(node['devIndex'], node['type'], self)
                     serverMethods.messageNum += 1       #
-                    serverMethods.messageList[serverMethods.messageNum] = 0
+                    serverMethods.messageList[serverMethods.messageNum] = {}
+                    serverMethods.messageList[serverMethods.messageNum]['value'] = 0 
+                    serverMethods.messageList[serverMethods.messageNum]['addr'] = hubAddr
                     
                     print("sent state change")
                     Msg.update({'mid': serverMethods.messageNum})
@@ -271,37 +275,6 @@ class Userhandler(BaseHandler):
                     found = 0
         if (found == 0):
             self.write("Device not found\n")
-        else:
-            # Async Wait for info response.
-            # Fetch and send result.
-            i = 0
-            while (i < 20 and serverMethods.messageList[serverMethods.messageNum] == 0):
-                yield gen.sleep(0.2)
-                i += 1
-            print("yield sleep sec(s),active list is")
-            print(serverMethods.messageList)
-            print(i/5)
-            del serverMethods.messageList[serverMethods.messageNum]
-            
-            nodeList = serverDB.findHub(int(hubAddr))
-            msg = json.dumps(nodeList, default=json_util.default)
-            self.write(msg)
-            # Update other clients...
-            nodeList['serverPush'] = 'stateChange'
-            nodeList['socketId'] = sid
-            nodeList['appSocketID'] = '0'
-            if '_id' in nodeList:
-                del nodeList['_id']
-            msg = json.dumps(nodeList, default=json_util.default)
-            if self.current_user in serverDB.socketList:
-                print("sending to browsers:%d" % len(serverDB.socketList[self.current_user]))
-                if len(serverDB.socketList[self.current_user]) != 0:
-                    SocketConnection.broadcast(serverDB.socketList[self.current_user][0], serverDB.socketList[self.current_user], msg)
-            if self.current_user in serverDB.appSocketList:
-                print("sending to apps:%d" % len(serverDB.appSocketList[self.current_user]))
-                if len(serverDB.appSocketList[self.current_user]) != 0:
-                    AppSocketConnection.broadcast(serverDB.appSocketList[self.current_user][0], serverDB.appSocketList[self.current_user], msg)
-
 
 class LoginHandler(BaseHandler):
     def get(self):
@@ -355,7 +328,6 @@ class SignupHandler(BaseHandler):
                 self.render("login.html", logintype = "signup", errorString = error)
         else:
                self.render("login.html", logintype = "signup", errorString = error)
-
 
 def main():
     SocketRouter = SockJSRouter(SocketConnection, '/socket')

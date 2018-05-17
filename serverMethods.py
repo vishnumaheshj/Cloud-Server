@@ -1,9 +1,12 @@
 from switchboard import *
 import json
 import serverDB
+from bson import json_util
 
 messageList = {}
 messageNum = 0
+socketList = dict()
+appSocketList = dict()
 
 
 def sentBoardInfoReq(nodeid):
@@ -54,10 +57,29 @@ def sentStateChangeReqForApp(nodeid, sbtype, message):
 
 
 def informWebClient(message):
+    #TODO : Handle App socket connections
     mid = message['mid']
+    global socketList
     print("mid is %d:" %mid)
+    print(messageList)
     if mid in messageList:
-        messageList[mid] = 1
+        nodeList = serverDB.findHub(int(messageList[mid]['addr']))
+        nodeList['serverPush'] = 'stateChange'
+        nodeList['appSocketID'] = '0'
+        if '_id' in nodeList:
+            del nodeList['_id']
+        msg = json.dumps(nodeList, default=json_util.default)
+        messageList[mid]['value'] = 1
+        hubAddr = int(messageList[mid]['addr'])
+        if hubAddr in socketList:
+            print(socketList[hubAddr])
+            print("sending to browsers:%d" % len(socketList[hubAddr]))
+            if len(socketList[hubAddr]) != 0:
+                socketList[hubAddr][0].session.broadcast(socketList[hubAddr], msg)
+                del messageList[mid]
+        else:
+            print("Not found in socket list")
+            print(hubAddr)
     else:
         print("NO ACTIVE REQUEST FOUND FOR RESPONSE")
 

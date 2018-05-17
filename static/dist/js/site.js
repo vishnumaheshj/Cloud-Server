@@ -27,11 +27,9 @@ $('document').ready(function(){
             sock.send(JSON.stringify(msg));
         }
         else if (data['serverPush'] == 'stateChange') {
-            //alert("serverPush");
-            if (data['socketId'] != globalSocketID) {
-                //alert("Toggle");
-                processAndToggle(data, 1);
-            }
+            processAndToggle(data, 1);
+            $('.row').removeClass("disabledbutton");
+            document.getElementById('modal').style.display = 'none';
         }
         else {
             //alert(data);

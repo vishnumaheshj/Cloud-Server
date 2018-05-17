@@ -9,8 +9,6 @@ hubCollection = None
 hubStates = None
 hubUsers = None
 connectionList = bidict()
-socketList = dict()
-appSocketList = dict()
 sessionList = dict()
 
 
